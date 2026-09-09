@@ -1,0 +1,160 @@
+    const hash = await sha256(buffer);
+    if (expectedHash && hash !== expectedHash) throw new Error('内置基线 SHA-256 与配置不一致，已阻止导入。');
+    const blob = new Blob([buffer], { type: 'text/html;charset=utf-8' });
+    const text = await blob.text();
+    const validation = baselineChecks(text, filename);
+    if (!validation.ok) throw new Error('文件不像预期的证券分析师复习 HTML：未检测到必要的考纲/题库结构。');
+    const record = {
+      id: BASELINE_ID,
+      filename,
+      size: buffer.byteLength,
+      sha256: hash,
+      importedAt: new Date().toISOString(),
+      source,
+      validation: validation.checks,
+      blob
+    };
+    await idbPut('baseline', record);
+    currentBaseline = record;
+    const persistent = await requestPersistentStorage();
+    await renderBaseline();
+    toast(persistent ? '原始题库已锁定保存；已申请持久存储' : '原始题库已锁定保存');
+    return record;
+  }
+
+  async function importBaselineFile(file) {
+    if (!file) return;
+    els.importHint.textContent = '正在读取并校验原文件…';
+    try {
+      const buffer = await file.arrayBuffer();
+      const record = await importBaselineArrayBuffer(buffer, file.name, null, 'manual');
+      const filenameNote = file.name === EXPECTED_FILENAME ? '' : '（文件名与推荐基线名不同，但内容结构校验通过）';
+      els.importHint.textContent = `导入成功 ${filenameNote} SHA-256: ${record.sha256.slice(0, 16)}…`;
+    } catch (err) {
+      els.importHint.textContent = `导入失败：${err.message}`;
+      toast(`导入失败：${err.message}`);
+    } finally {
+      els.baselineFile.value = '';
+      els.replaceBaselineFile.value = '';
+    }
+  }
+
+  async function maybeImportEmbedded() {
+    const existing = await idbGet('baseline', BASELINE_ID);
+    if (existing) return;
+    const cfg = await loadEmbeddedConfig();
+    if (!cfg || !cfg.embedded) return;
+    try {
+      const res = await fetch(cfg.path || 'baseline/original.html');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buffer = await res.arrayBuffer();
+      await importBaselineArrayBuffer(buffer, cfg.filename || EXPECTED_FILENAME, cfg.sha256 || null, 'embedded');
+    } catch (err) {
+      toast(`内置题库载入失败：${err.message}`);
+    }
+  }
+
+  async function renderBaseline() {
+    currentBaseline = await idbGet('baseline', BASELINE_ID);
+    const has = Boolean(currentBaseline);
+    els.noBaseline.classList.toggle('hidden', has);
+    els.hasBaseline.classList.toggle('hidden', !has);
+    els.removeBaselineBtn.classList.toggle('hidden', !has);
+    if (has) {
+      els.baselineName.textContent = currentBaseline.filename;
+      els.baselineSize.textContent = formatBytes(currentBaseline.size);
+      els.baselineHash.textContent = currentBaseline.sha256;
+      els.baselineImportedAt.textContent = formatDate(currentBaseline.importedAt);
+      const v = currentBaseline.validation || {};
+      els.baselineIntegrity.textContent = (v.title && v.syllabus && v.questions) ? '结构校验通过 · 基线只读' : '已保存 · 建议重新校验';
+    }
+    await updateDashboard();
+  }
+
+  function enhancementCss() {
+    return `
+<style id="pwa-mobile-enhancement">
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body.pwa-mobile{padding-bottom:calc(82px + env(safe-area-inset-bottom))!important;overflow-x:hidden!important}
+body.pwa-mobile aside{display:none!important}
+body.pwa-mobile.menu-open aside{display:block!important;position:fixed!important;inset:0 11% 0 0!important;width:89%!important;max-width:360px!important;z-index:10020!important;padding:max(24px,env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom))!important;box-shadow:18px 0 60px rgba(0,0,0,.28)!important}
+body.pwa-mobile main{margin-left:0!important;max-width:none!important;padding:0 14px calc(92px + env(safe-area-inset-bottom))!important}
+body.pwa-mobile .topbar{position:sticky!important;top:0!important;z-index:40!important;background:rgba(244,245,240,.97)!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding:8px 0!important;min-height:52px}
+body.pwa-mobile .topbar .edition{display:none!important}
+body.pwa-mobile .tools{gap:6px!important;flex-wrap:nowrap!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+body.pwa-mobile .tools button{min-height:42px!important;min-width:42px!important;font-size:12px!important;white-space:nowrap!important}
+body.pwa-mobile .hero{padding:18px 0 10px!important;display:block!important}
+body.pwa-mobile .hero h1{font-size:27px!important;line-height:1.22!important;letter-spacing:-.5px!important}
+body.pwa-mobile .hero p{font-size:14px!important;line-height:1.65!important}
+body.pwa-mobile .stamp{display:none!important}
+body.pwa-mobile .tabs{position:sticky!important;top:52px!important;z-index:35!important;background:rgba(244,245,240,.98)!important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);gap:22px!important;margin:0 -14px 16px!important;padding:0 14px!important;scrollbar-width:none}
+body.pwa-mobile .tabs::-webkit-scrollbar{display:none}
+body.pwa-mobile .tab{min-height:48px!important;font-size:14px!important}
+body.pwa-mobile .stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+body.pwa-mobile .stat{padding:14px!important;border-radius:14px!important}
+body.pwa-mobile .stat strong{font-size:27px!important}
+body.pwa-mobile .grid2{grid-template-columns:1fr!important;gap:10px!important}
+body.pwa-mobile .panel{padding:16px!important;border-radius:15px!important;margin-bottom:12px!important}
+body.pwa-mobile .section-head{align-items:flex-start!important;gap:10px!important;flex-wrap:wrap!important}
+body.pwa-mobile .filters{position:relative!important;padding:12px!important;border-radius:14px!important;gap:8px!important}
+body.pwa-mobile .filters input,body.pwa-mobile .filters select{min-height:44px!important;font-size:16px!important}
+body.pwa-mobile .filters input[type=search]{min-width:0!important;width:100%!important;flex-basis:100%!important}
+body.pwa-mobile .card{border-radius:15px!important;margin-bottom:11px!important}
+body.pwa-mobile .card>summary{padding:15px 13px!important;gap:8px!important;min-height:58px!important}
+body.pwa-mobile .cardtitle{font-size:16px!important;line-height:1.5!important}
+body.pwa-mobile .cardbody{padding:16px 14px!important}
+body.pwa-mobile .cardbody li{line-height:1.75!important}
+body.pwa-mobile .formula{font-size:16px!important;line-height:1.6!important;padding:13px!important;overflow-x:auto!important}
+body.pwa-mobile button,body.pwa-mobile select,body.pwa-mobile input{touch-action:manipulation}
+body.pwa-mobile button{min-height:44px}
+body.pwa-mobile .qbox{padding:15px!important;margin:10px 0!important;border-radius:16px!important}
+body.pwa-mobile .qtext{font-size:17px!important;line-height:1.75!important;margin:12px 0!important}
+body.pwa-mobile .choices{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+body.pwa-mobile .choice{min-height:52px!important;width:100%!important;font-size:17px!important;border-radius:12px!important}
+body.pwa-mobile .qsolution{font-size:15px!important;line-height:1.75!important;padding:15px!important;border-radius:13px!important}
+body.pwa-mobile .qfoot{font-size:11px!important;line-height:1.5!important}
+body.pwa-mobile .qpreview>summary{padding:14px!important;font-size:14px!important;line-height:1.6!important}
+body.pwa-mobile .notes{font-size:16px!important;min-height:82px!important}
+body.pwa-mobile .rankrow{grid-template-columns:26px minmax(0,1fr) 58px!important;gap:8px!important}
+body.pwa-mobile .rankrow .reason{grid-column:2!important}
+body.pwa-mobile .outline-row{grid-template-columns:44px minmax(0,1fr)!important;gap:8px!important}
+body.pwa-mobile .scrolltable{overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+body.pwa-mobile dialog{width:calc(100% - 18px)!important;max-height:86%!important;border-radius:18px!important}
+body.pwa-mobile .dialoghead{padding:12px 14px!important}.dialogbody{padding:14px!important}
+body.pwa-mobile .toast{left:50%!important;bottom:calc(86px + env(safe-area-inset-bottom))!important}
+.pwa-mobile-bottom{position:fixed;left:0;right:0;bottom:0;z-index:9999;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:7px 8px calc(7px + env(safe-area-inset-bottom));background:rgba(250,252,250,.97);border-top:1px solid #d9e2dd;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+.pwa-mobile-bottom button{border:0;background:transparent;border-radius:11px;min-height:50px!important;padding:5px 2px!important;color:#63767a;font-size:11px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px}
+.pwa-mobile-bottom button::before{font-size:18px;line-height:1}.pwa-mobile-bottom button[data-nav=home]::before{content:'⌂'}.pwa-mobile-bottom button[data-nav=chapters]::before{content:'☰'}.pwa-mobile-bottom button[data-nav=quiz]::before{content:'✓'}.pwa-mobile-bottom button[data-nav=wrong]::before{content:'↺'}
+.pwa-mobile-bottom button.active{background:#e9f4ef;color:#187463;font-weight:700}
+.pwa-persist-toast{position:fixed;left:50%;bottom:calc(82px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:10000;background:#173a42;color:white;padding:9px 12px;border-radius:10px;font-size:11px;max-width:85%;text-align:center}
+@media(max-width:370px){body.pwa-mobile main{padding-left:10px!important;padding-right:10px!important}.pwa-mobile-bottom{padding-left:4px;padding-right:4px}.pwa-mobile-bottom button{font-size:10px}}
+@media(prefers-color-scheme:dark){body.pwa-mobile{--bg:#101719;--paper:#182225;--ink:#eef4f2;--muted:#9daea9;--line:#2e3b3e;--pale:#15362f;--nav:#102d32;background:#101719!important;color:#eef4f2!important}body.pwa-mobile .topbar,body.pwa-mobile .tabs{background:rgba(16,23,25,.97)!important}body.pwa-mobile .panel,body.pwa-mobile .card,body.pwa-mobile .qbox,body.pwa-mobile .filters,body.pwa-mobile .stat,body.pwa-mobile .qpreview,body.pwa-mobile .raw,body.pwa-mobile .example,body.pwa-mobile .statusrow select,body.pwa-mobile input,body.pwa-mobile select,body.pwa-mobile textarea{background:#182225!important;color:#eef4f2!important;border-color:#2e3b3e!important}body.pwa-mobile .qsolution,body.pwa-mobile .answer,body.pwa-mobile .formula{background:#15362f!important;color:#eef4f2!important}.pwa-mobile-bottom{background:rgba(18,28,31,.97);border-top-color:#2e3b3e}.pwa-mobile-bottom button.active{background:#15362f}.pwa-mobile-bottom button{color:#a4b2af}}
+</style>`;
+  }
+
+  function enhancementScript() {
+    const code = `(() => {
+      if (window.__PWA_MOBILE_ENHANCED__) return;
+      window.__PWA_MOBILE_ENHANCED__ = true;
+      document.body.classList.add('pwa-mobile');
+      const post = (payload) => { try { parent.postMessage(Object.assign({source:'securities-review-pwa'}, payload), '*'); } catch(e){} };
+      const txt = el => (el && el.textContent || '').replace(/\\s+/g,' ').trim();
+      const findTab = regex => Array.from(document.querySelectorAll('.tab')).find(el => regex.test(txt(el)));
+      const clickTab = regex => { const el = findTab(regex); if (el) { el.click(); setTimeout(() => window.scrollTo({top:0,behavior:'smooth'}),30); return true; } return false; };
+      const nav = document.createElement('nav');
+      nav.className = 'pwa-mobile-bottom';
+      nav.setAttribute('aria-label','手机复习导航');
+      nav.innerHTML = '<button type="button" data-nav="home">首页</button><button type="button" data-nav="chapters">章节</button><button type="button" data-nav="quiz">刷题</button><button type="button" data-nav="wrong">错题</button>';
+      document.body.appendChild(nav);
+      const navButtons = Array.from(nav.querySelectorAll('button'));
+      function mark(name){navButtons.forEach(b=>b.classList.toggle('active',b.dataset.nav===name));}
+      nav.addEventListener('click', e => {
+        const b=e.target.closest('button'); if(!b)return;
+        if(b.dataset.nav==='home'){const el=document.querySelector('.tab[data-view="overview"]'); if(el)el.click(); else clickTab(/复习总览|总览|首页/); window.scrollTo({top:0,behavior:'smooth'}); mark('home');}
+        if(b.dataset.nav==='chapters'){const menu=document.getElementById('menuBtn'); if(menu)menu.click(); else {const el=document.querySelector('.tab[data-view="cards"]'); if(el)el.click();} mark('chapters');}
+        if(b.dataset.nav==='quiz'){const el=document.querySelector('.tab[data-view="questions"]'); if(el)el.click(); else clickTab(/经典题库|经典题|题库|刷题/); window.scrollTo({top:0,behavior:'smooth'}); mark('quiz');}
+        if(b.dataset.nav==='wrong'){post({type:'OPEN_WRONG'});}
+      });
+      const seenAttempts = new Map();
+      const normalizeAnswer = s => (String(s||'').toUpperCase().match(/[A-D]/g)||[]).sort().join('');
+      function qidOf(box){
