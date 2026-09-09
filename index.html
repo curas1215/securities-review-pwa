@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173a42">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="分析师复习">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <link rel="stylesheet" href="assets/app.css">
+  <title>证券分析师复习 · iPhone PWA</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="shell-header">
+      <div>
+        <div class="eyebrow">iPhone 12 Pro Max · PWA</div>
+        <h1>证券分析师复习</h1>
+      </div>
+      <span id="offlineBadge" class="status-badge">检查网络…</span>
+    </header>
+
+    <main id="launcher" class="launcher">
+      <section class="hero-card">
+        <div>
+          <div class="lockline"><span aria-hidden="true">🔒</span> 原始题库只读锁定</div>
+          <h2>复用原复习 HTML，不重建、不改写底层题库</h2>
+          <p>首次导入后，原文件以二进制 Blob 形式保存在 IndexedDB。PWA 仅在运行时叠加手机端样式与学习记录，不会回写原题干、答案、解析、考频或知识点映射。</p>
+        </div>
+      </section>
+
+      <section id="baselinePanel" class="panel">
+        <div class="section-title-row">
+          <div>
+            <div class="eyebrow">BASELINE</div>
+            <h2>原始复习数据</h2>
+          </div>
+          <button id="removeBaselineBtn" class="ghost danger hidden" type="button">移除本机副本</button>
+        </div>
+
+        <div id="noBaseline" class="empty-state">
+          <p class="strong">尚未导入原始复习 HTML</p>
+          <p class="muted">请选择之前生成的 <b>证券分析师_高频考点与经典题复习.html</b>。导入时会计算 SHA‑256，便于以后核对数据是否被替换。</p>
+          <label class="import-button" for="baselineFile">选择原 HTML</label>
+          <input id="baselineFile" type="file" accept="text/html,.html" hidden>
+          <p id="importHint" class="micro"></p>
+        </div>
+
+        <div id="hasBaseline" class="hidden">
+          <dl class="baseline-grid">
+            <div><dt>文件</dt><dd id="baselineName">—</dd></div>
+            <div><dt>大小</dt><dd id="baselineSize">—</dd></div>
+            <div class="wide"><dt>SHA‑256</dt><dd id="baselineHash" class="hash">—</dd></div>
+            <div><dt>导入时间</dt><dd id="baselineImportedAt">—</dd></div>
+            <div><dt>完整性</dt><dd id="baselineIntegrity">—</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="openStudyBtn" class="primary big" type="button">打开复习册</button>
+            <label class="secondary big" for="replaceBaselineFile">重新导入原 HTML</label>
+            <input id="replaceBaselineFile" type="file" accept="text/html,.html" hidden>
+          </div>
+        </div>
+      </section>
+
+      <section class="metrics-grid" aria-label="学习记录概览">
+        <button id="continueCard" class="metric-card" type="button">
+          <span class="metric-label">继续复习</span>
+          <strong id="lastPosition">尚无记录</strong>
+          <span class="metric-note">从上次位置继续</span>
+        </button>
+        <button id="wrongCard" class="metric-card" type="button">
+          <span class="metric-label">错题记录</span>
+          <strong id="wrongCount">0</strong>
+          <span class="metric-note">自动从原题库答题结果识别</span>
+        </button>
+        <button id="favoriteCard" class="metric-card" type="button">
+          <span class="metric-label">收藏</span>
+          <strong id="favoriteCount">0</strong>
+          <span class="metric-note">沿用原页面收藏动作</span>
+        </button>
+        <button id="backupCard" class="metric-card" type="button">
+          <span class="metric-label">学习数据</span>
+          <strong>备份</strong>
+          <span class="metric-note">导出 / 导入学习状态</span>
+        </button>
+      </section>
+
+      <section class="panel compact">
+        <div class="section-title-row">
+          <div>
+            <div class="eyebrow">INSTALL</div>
+            <h2>添加到 iPhone 主屏幕</h2>
+          </div>
+        </div>
+        <ol class="steps">
+          <li>用 Safari 打开本 PWA 的 HTTPS 地址。</li>
+          <li>点 Safari 的“分享”按钮。</li>
+          <li>选择“添加到主屏幕”。</li>
+          <li>从主屏幕打开一次并导入原 HTML；之后可离线复习。</li>
+        </ol>
+      </section>
+    </main>
+
+    <section id="studyView" class="study-view hidden" aria-label="复习册">
+      <div class="study-toolbar">
+        <button id="backToLauncher" class="toolbar-btn" type="button" aria-label="返回PWA首页">‹</button>
+        <div class="study-title">
+          <strong>证券分析师复习</strong>
+          <span id="studyStatus">原数据只读 · 移动端增强</span>
+        </div>
+        <button id="studyDataBtn" class="toolbar-btn" type="button" aria-label="学习数据">•••</button>
+      </div>
+      <iframe id="studyFrame" title="证券分析师原始互动复习册"></iframe>
+    </section>
+  </div>
+
+  <div id="sheetBackdrop" class="sheet-backdrop hidden" role="presentation"></div>
+  <section id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="sheetTitle">学习数据</h2>
+      <button id="closeSheet" class="icon-btn" type="button" aria-label="关闭">×</button>
+    </div>
+    <div id="sheetBody" class="sheet-body"></div>
+  </section>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="assets/app.js" defer></script>
+</body>
+</html>
