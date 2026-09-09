@@ -1,0 +1,160 @@
+        const own=box.dataset && (box.dataset.qid||box.dataset.id||box.dataset.questionId);
+        if(own)return own;
+        const child=box.querySelector('[data-qid],[data-question-id]');
+        return child ? (child.dataset.qid||child.dataset.questionId||'') : '';
+      }
+      function scanAttempt(box){
+        if(!box)return;
+        const solution=box.querySelector('.qsolution,.answer');
+        if(!solution || solution.offsetParent===null)return;
+        const selected=Array.from(box.querySelectorAll('.choice.selected')).map(b=>normalizeAnswer(txt(b))).join('');
+        if(!selected)return;
+        const solutionText=txt(solution);
+        let m=solutionText.match(/(?:正确)?答案\\s*[：:]?\\s*([A-D](?:\\s*[,、，\\/]?\\s*[A-D]){0,3})/i);
+        if(!m)m=solutionText.match(/【答案】\\s*([A-D](?:\\s*[,、，\\/]?\\s*[A-D]){0,3})/i);
+        if(!m)return;
+        const correct=normalizeAnswer(m[1]);
+        const stem=txt(box.querySelector('.qtext')) || txt(box).slice(0,600);
+        const qid=qidOf(box);
+        const sig=(qid||stem.slice(0,120))+'|'+selected+'|'+correct;
+        if(seenAttempts.get(box)===sig)return;
+        seenAttempts.set(box,sig);
+        post({type:'ATTEMPT',qid,stem,selected,correct,isCorrect:selected===correct,at:new Date().toISOString()});
+      }
+      const observer=new MutationObserver(muts=>{
+        const boxes=new Set();
+        muts.forEach(m=>{const el=m.target.nodeType===1?m.target:m.target.parentElement;const box=el&&el.closest&&el.closest('.qbox');if(box)boxes.add(box);});
+        boxes.forEach(box=>setTimeout(()=>scanAttempt(box),30));
+      });
+      observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']});
+      document.addEventListener('click',e=>{
+        const box=e.target.closest && e.target.closest('.qbox'); if(box)setTimeout(()=>scanAttempt(box),120);
+        const star=e.target.closest && e.target.closest('.star');
+        if(star){setTimeout(()=>{const root=star.closest('.card,.qbox')||document.body;const label=txt(root.querySelector('.cardtitle,.qtext'))||txt(root).slice(0,220);post({type:'FAVORITE',label,active:star.classList.contains('on'),at:new Date().toISOString()});},30);}
+        const tab=e.target.closest && e.target.closest('.tab');
+        const chapter=e.target.closest && e.target.closest('.chapterbtn');
+        const topic=e.target.closest && e.target.closest('.topic-link');
+        const summary=e.target.closest && e.target.closest('summary');
+        if(chapter && document.body.classList.contains('menu-open')){setTimeout(()=>{const menu=document.getElementById('menuBtn'); if(menu)menu.click();},40);}
+        const target=tab||chapter||topic||summary||box;
+        if(target){
+          const activeTab=document.querySelector('.tab.active');
+          let label='';
+          if(box)label=(txt(box.querySelector('.qtext'))||txt(box)).slice(0,150);
+          else label=txt(target).slice(0,150);
+          post({type:'POSITION',tab:txt(activeTab).slice(0,50),label,at:new Date().toISOString()});
+        }
+      },true);
+      window.addEventListener('message',ev=>{
+        const d=ev.data||{};
+        if(d.source!=='securities-review-pwa-parent')return;
+        if(d.type==='RESTORE_POSITION'&&d.position){
+          const p=d.position;
+          if(p.tab){const tab=Array.from(document.querySelectorAll('.tab')).find(x=>txt(x).includes(p.tab));if(tab)tab.click();}
+          setTimeout(()=>{
+            if(p.label){const candidates=Array.from(document.querySelectorAll('.qtext,.cardtitle,.chapterbtn,.topic-link,summary'));const hit=candidates.find(x=>txt(x).includes(p.label.slice(0,50)));if(hit)hit.scrollIntoView({block:'center',behavior:'smooth'});}
+          },250);
+        }
+      });
+      const active=document.querySelector('.tab.active');
+      const activeText=txt(active); const activeView=active&&active.dataset&&active.dataset.view;
+      if(activeView==='questions'||/经典题库|题库/.test(activeText))mark('quiz');else if(activeView==='cards')mark('chapters');else mark('home');
+      post({type:'READY'});
+    })();`;
+    return `<script id="pwa-runtime-enhancement">${code}<\/script>`;
+  }
+
+  function enhanceHtml(original) {
+    let html = original;
+    const viewport = '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">';
+    const additions = viewport + enhancementCss();
+    if (/<\/head>/i.test(html)) html = html.replace(/<\/head>/i, `${additions}</head>`);
+    else html = additions + html;
+    const script = enhancementScript();
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}</body>`);
+    else html += script;
+    return html;
+  }
+
+  async function openStudy(restore = false) {
+    const baseline = await idbGet('baseline', BASELINE_ID);
+    if (!baseline || !baseline.blob) { toast('请先导入原始复习 HTML'); return; }
+    els.launcher.classList.add('hidden');
+    els.studyView.classList.remove('hidden');
+    els.studyStatus.textContent = `原数据只读 · ${baseline.sha256.slice(0, 8)}…`;
+    const original = await baseline.blob.text();
+    const enhanced = enhanceHtml(original);
+    if (frameBlobUrl) URL.revokeObjectURL(frameBlobUrl);
+    frameBlobUrl = URL.createObjectURL(new Blob([enhanced], {type:'text/html;charset=utf-8'}));
+    restoreAfterFrameLoad = restore ? await idbGet('settings','lastPosition') : null;
+    els.frame.src = frameBlobUrl;
+  }
+
+  function closeStudy() {
+    els.studyView.classList.add('hidden');
+    els.launcher.classList.remove('hidden');
+    els.frame.src = 'about:blank';
+    if (frameBlobUrl) { URL.revokeObjectURL(frameBlobUrl); frameBlobUrl = null; }
+    updateDashboard();
+  }
+
+  async function handleAttempt(msg) {
+    const id = msg.qid ? `qid:${msg.qid}` : `stem:${await textKey(msg.stem)}`;
+    const existing = await idbGet('attempts', id) || { id, qid: msg.qid || '', stem: msg.stem || '', attempts: 0, correctCount: 0, wrongCount: 0, history: [] };
+    existing.stem = msg.stem || existing.stem;
+    existing.qid = msg.qid || existing.qid;
+    existing.attempts += 1;
+    if (msg.isCorrect) existing.correctCount += 1; else existing.wrongCount += 1;
+    existing.lastSelected = msg.selected;
+    existing.correctAnswer = msg.correct;
+    existing.lastCorrect = Boolean(msg.isCorrect);
+    existing.lastAt = msg.at || new Date().toISOString();
+    existing.history = (existing.history || []).concat([{selected:msg.selected,correct:msg.correct,isCorrect:Boolean(msg.isCorrect),at:existing.lastAt}]).slice(-10);
+    await idbPut('attempts', existing);
+    await updateDashboard();
+    if (!msg.isCorrect) toast('已自动加入错题记录');
+  }
+
+  async function handleFavorite(msg) {
+    const label = String(msg.label || '').trim();
+    if (!label) return;
+    const id = `fav:${await textKey(label)}`;
+    if (msg.active) await idbPut('favorites', { id, label, at: msg.at || new Date().toISOString() });
+    else await idbDelete('favorites', id);
+    await updateDashboard();
+  }
+
+  async function handlePosition(msg) {
+    if (!msg.label && !msg.tab) return;
+    const value = { key:'lastPosition', tab:msg.tab || '', label:msg.label || '', at:msg.at || new Date().toISOString() };
+    await idbPut('settings', value);
+    els.lastPosition.textContent = value.label ? value.label.slice(0, 22) : (value.tab || '已记录');
+  }
+
+  async function updateDashboard() {
+    const [attempts, favorites, last] = await Promise.all([idbAll('attempts'), idbAll('favorites'), idbGet('settings','lastPosition')]);
+    const wrong = attempts.filter(x => (x.wrongCount || 0) > 0);
+    els.wrongCount.textContent = String(wrong.length);
+    els.favoriteCount.textContent = String(favorites.length);
+    els.lastPosition.textContent = last ? ((last.label || last.tab || '已记录').slice(0, 22)) : '尚无记录';
+  }
+
+  function openSheet(title, html) {
+    els.sheetTitle.textContent = title;
+    els.sheetBody.innerHTML = html;
+    els.sheetBackdrop.classList.remove('hidden');
+    els.sheet.classList.remove('hidden');
+  }
+
+  function closeSheet() {
+    els.sheet.classList.add('hidden');
+    els.sheetBackdrop.classList.add('hidden');
+    els.sheetBody.innerHTML = '';
+  }
+
+  async function showWrongSheet() {
+    const attempts = await idbAll('attempts');
+    const wrong = attempts.filter(x => (x.wrongCount || 0) > 0).sort((a,b)=>String(b.lastAt||'').localeCompare(String(a.lastAt||'')));
+    const items = wrong.length ? wrong.map(x => `<div class="record-item"><strong>${escapeHtml((x.stem||x.qid||'未命名题目').slice(0,180))}</strong><span><span class="wrong-mark">错 ${x.wrongCount||0}</span> · 对 ${x.correctCount||0} · 最近 ${escapeHtml(formatDate(x.lastAt))} · 你的答案 ${escapeHtml(x.lastSelected||'—')} / 正确 ${escapeHtml(x.correctAnswer||'—')}</span></div>`).join('') : '<p class="muted">暂时没有识别到错题。开始刷题后，PWA 会在原页面显示答案时自动记录。</p>';
+    openSheet('错题记录', `<div class="sheet-section"><div class="record-list">${items}</div></div><div class="sheet-actions"><button id="clearWrongBtn" class="secondary" type="button">清空 PWA 错题记录</button></div>`);
+    const btn = $('clearWrongBtn');
