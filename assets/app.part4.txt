@@ -1,0 +1,129 @@
+    if (btn) btn.addEventListener('click', async()=>{ if(confirm('只清空 PWA 自动记录的答题历史，不影响原题库。确定吗？')){await idbClear('attempts');closeSheet();await updateDashboard();toast('PWA 答题记录已清空');}});
+  }
+
+  async function showFavoritesSheet() {
+    const favorites = (await idbAll('favorites')).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+    const items = favorites.length ? favorites.map(x=>`<div class="record-item"><strong>${escapeHtml(x.label.slice(0,220))}</strong><span>${escapeHtml(formatDate(x.at))}</span></div>`).join('') : '<p class="muted">暂无收藏记录。原页面中的收藏按钮仍按原逻辑工作；PWA 会同步记录可识别的收藏动作。</p>';
+    openSheet('收藏记录', `<div class="record-list">${items}</div>`);
+  }
+
+  async function showDataSheet() {
+    const baseline = await idbGet('baseline', BASELINE_ID);
+    const baselineText = baseline ? `${escapeHtml(baseline.filename)}<br><span class="hash">${escapeHtml(baseline.sha256)}</span>` : '未导入';
+    openSheet('学习数据', `
+      <div class="sheet-section"><h3>当前原始基线</h3><div class="record-item"><strong>${baselineText}</strong><span>学习数据与原题库分离保存，备份不会改写题库。</span></div></div>
+      <div class="sheet-actions">
+        <button id="exportLearningBtn" class="primary" type="button">导出学习数据 JSON</button>
+        <label class="secondary" for="importLearningInput">导入学习数据 JSON</label>
+        <input id="importLearningInput" type="file" accept="application/json,.json" hidden>
+        <button id="exportBaselineBtn" class="secondary" type="button">导出原始 HTML 基线副本</button>
+      </div>`);
+    $('exportLearningBtn').addEventListener('click', exportLearningData);
+    $('exportBaselineBtn').addEventListener('click', exportBaselineCopy);
+    $('importLearningInput').addEventListener('change', async e => { await importLearningData(e.target.files[0]); e.target.value=''; });
+  }
+
+  async function exportLearningData() {
+    const baseline = await idbGet('baseline', BASELINE_ID);
+    const [attempts, favorites, settings] = await Promise.all([idbAll('attempts'), idbAll('favorites'), idbAll('settings')]);
+    const local = {};
+    for (let i=0;i<localStorage.length;i++) { const k=localStorage.key(i); local[k]=localStorage.getItem(k); }
+    const payload = {
+      schemaVersion: 1,
+      appVersion: APP_VERSION,
+      exportedAt: new Date().toISOString(),
+      baseline: baseline ? { filename:baseline.filename, sha256:baseline.sha256, size:baseline.size } : null,
+      attempts, favorites, settings, localStorage: local
+    };
+    downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}), `securities-review-backup-${new Date().toISOString().slice(0,10)}.json`);
+    toast('学习数据备份已生成');
+  }
+
+  async function importLearningData(file) {
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.schemaVersion !== 1 || !Array.isArray(data.attempts) || !Array.isArray(data.favorites)) throw new Error('备份格式或 schemaVersion 不受支持');
+      const baseline = await idbGet('baseline', BASELINE_ID);
+      if (baseline && data.baseline && data.baseline.sha256 && data.baseline.sha256 !== baseline.sha256) {
+        const proceed = confirm('备份对应的原始题库 SHA-256 与当前基线不同。继续会合并学习状态，但不会改题库。是否继续？');
+        if (!proceed) return;
+      }
+      await Promise.all([idbClear('attempts'), idbClear('favorites'), idbClear('settings')]);
+      for (const x of data.attempts) if (x && x.id) await idbPut('attempts', x);
+      for (const x of data.favorites) if (x && x.id) await idbPut('favorites', x);
+      for (const x of (data.settings || [])) if (x && x.key) await idbPut('settings', x);
+      if (data.localStorage && typeof data.localStorage === 'object') Object.entries(data.localStorage).forEach(([k,v])=>localStorage.setItem(k,String(v)));
+      await updateDashboard();
+      closeSheet();
+      toast('学习数据已恢复');
+    } catch (err) { toast(`导入失败：${err.message}`); }
+  }
+
+  async function exportBaselineCopy() {
+    const baseline = await idbGet('baseline', BASELINE_ID);
+    if (!baseline || !baseline.blob) { toast('没有可导出的原始基线'); return; }
+    downloadBlob(baseline.blob, baseline.filename || EXPECTED_FILENAME);
+    toast('已导出原始 HTML 的二进制副本');
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }
+
+  async function removeBaseline() {
+    if (!confirm('只移除本机保存的原始 HTML 副本；PWA 学习记录仍保留。确定吗？')) return;
+    await idbDelete('baseline', BASELINE_ID);
+    currentBaseline = null;
+    await renderBaseline();
+    toast('本机基线副本已移除');
+  }
+
+  function bindEvents() {
+    els.baselineFile.addEventListener('change', e => importBaselineFile(e.target.files[0]));
+    els.replaceBaselineFile.addEventListener('change', e => importBaselineFile(e.target.files[0]));
+    els.openStudyBtn.addEventListener('click', ()=>openStudy(false));
+    els.continueCard.addEventListener('click', ()=>openStudy(true));
+    els.wrongCard.addEventListener('click', showWrongSheet);
+    els.favoriteCard.addEventListener('click', showFavoritesSheet);
+    els.backupCard.addEventListener('click', showDataSheet);
+    els.studyDataBtn.addEventListener('click', showDataSheet);
+    els.backToLauncher.addEventListener('click', closeStudy);
+    els.removeBaselineBtn.addEventListener('click', removeBaseline);
+    els.closeSheet.addEventListener('click', closeSheet);
+    els.sheetBackdrop.addEventListener('click', closeSheet);
+    window.addEventListener('online', updateNetworkBadge);
+    window.addEventListener('offline', updateNetworkBadge);
+    window.addEventListener('message', async ev => {
+      const msg = ev.data || {};
+      if (msg.source !== 'securities-review-pwa') return;
+      if (msg.type === 'ATTEMPT') await handleAttempt(msg);
+      if (msg.type === 'FAVORITE') await handleFavorite(msg);
+      if (msg.type === 'POSITION') await handlePosition(msg);
+      if (msg.type === 'OPEN_WRONG') await showWrongSheet();
+      if (msg.type === 'READY' && restoreAfterFrameLoad) {
+        els.frame.contentWindow?.postMessage({source:'securities-review-pwa-parent',type:'RESTORE_POSITION',position:restoreAfterFrameLoad}, '*');
+        restoreAfterFrameLoad = null;
+      }
+    });
+  }
+
+  async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    try { await navigator.serviceWorker.register('./sw.js'); } catch (err) { console.warn('Service worker registration failed', err); }
+  }
+
+  async function init() {
+    bindEvents();
+    updateNetworkBadge();
+    await openDB();
+    await maybeImportEmbedded();
+    await renderBaseline();
+    await registerServiceWorker();
+  }
+
+  init().catch(err => { console.error(err); toast(`初始化失败：${err.message}`); });
+})();
