@@ -48,6 +48,83 @@ function installDarkModeContrastFix() {
     -webkit-text-fill-color:#fff1f1 !important;
     border-color:#9a5757 !important;
   }
+
+  /* 原 HTML 中若干内容块写死为浅色背景；深色模式统一提高对比度。 */
+  body.pwa-mobile .material,
+  body.pwa-mobile .qpreview,
+  body.pwa-mobile .qbox,
+  body.pwa-mobile .raw,
+  body.pwa-mobile .example,
+  body.pwa-mobile .empty,
+  body.pwa-mobile .filters,
+  body.pwa-mobile .card,
+  body.pwa-mobile .panel,
+  body.pwa-mobile .stat,
+  body.pwa-mobile dialog,
+  body.pwa-mobile .dialoghead {
+    background:#182225 !important;
+    color:#eef4f2 !important;
+    border-color:#2e3b3e !important;
+  }
+  body.pwa-mobile .material,
+  body.pwa-mobile .material > summary,
+  body.pwa-mobile .material p,
+  body.pwa-mobile .material div,
+  body.pwa-mobile .material span,
+  body.pwa-mobile .qtext {
+    color:#eef4f2 !important;
+    -webkit-text-fill-color:#eef4f2 !important;
+  }
+  body.pwa-mobile .material {
+    background:#202c2f !important;
+    border:1px solid #3b4a4e !important;
+  }
+  body.pwa-mobile .qsolution,
+  body.pwa-mobile .answer,
+  body.pwa-mobile .formula,
+  body.pwa-mobile .calc-out {
+    background:#15362f !important;
+    color:#eef4f2 !important;
+    -webkit-text-fill-color:#eef4f2 !important;
+    border-color:#31564d !important;
+  }
+  body.pwa-mobile .notice {
+    background:#3a3020 !important;
+    color:#f5dfb5 !important;
+    -webkit-text-fill-color:#f5dfb5 !important;
+    border-color:#6d5a35 !important;
+  }
+  body.pwa-mobile .trap {
+    background:#3a2620 !important;
+    color:#ffc8b2 !important;
+    -webkit-text-fill-color:#ffc8b2 !important;
+    border-color:#704638 !important;
+  }
+
+  /* 真正的扫描题/公式图片保持原始浅色画布，禁止深色模式反色。 */
+  body.pwa-mobile img.qscan,
+  body.pwa-mobile img.qmath,
+  body.pwa-mobile .qscan,
+  body.pwa-mobile .qmath {
+    background:#fff !important;
+    color-scheme:light !important;
+    filter:none !important;
+    mix-blend-mode:normal !important;
+    opacity:1 !important;
+    padding:4px !important;
+    border:1px solid #d7dfdc !important;
+    border-radius:8px !important;
+  }
+  body.pwa-mobile .qbox svg {
+    background:#f7faf8 !important;
+    color-scheme:light !important;
+    border-radius:8px !important;
+    padding:6px !important;
+  }
+  body.pwa-mobile .qbox svg text {
+    fill:#263b40 !important;
+  }
+
   body.pwa-mobile .tab { color:#a9bbb6 !important; -webkit-text-fill-color:#a9bbb6 !important; }
   body.pwa-mobile .tab.active { color:#24a58d !important; -webkit-text-fill-color:#24a58d !important; }
   body.pwa-mobile .pwa-mobile-bottom button {
