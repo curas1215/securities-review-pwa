@@ -5,7 +5,7 @@ function installDarkModeContrastFix() {
   const inject = () => {
     let doc;
     try { doc = frame.contentDocument; } catch (_) { return; }
-    if (!doc || !doc.head) return;
+    if (!doc || !doc.head || !doc.body) return;
 
     const old = doc.getElementById('pwa-dark-button-contrast-fix');
     if (old) old.remove();
@@ -13,6 +13,108 @@ function installDarkModeContrastFix() {
     const style = doc.createElement('style');
     style.id = 'pwa-dark-button-contrast-fix';
     style.textContent = `
+/* Mobile integrity rules: study content must never be visually clipped. */
+body.pwa-mobile .qbox,
+body.pwa-mobile .qslot,
+body.pwa-mobile .qpreview,
+body.pwa-mobile .qpreview > summary,
+body.pwa-mobile .qtext,
+body.pwa-mobile .material,
+body.pwa-mobile .raw,
+body.pwa-mobile .example,
+body.pwa-mobile .answer,
+body.pwa-mobile .qsolution {
+  max-height:none !important;
+  height:auto !important;
+  text-overflow:clip !important;
+}
+body.pwa-mobile .qbox,
+body.pwa-mobile .qslot,
+body.pwa-mobile .qtext,
+body.pwa-mobile .material,
+body.pwa-mobile .raw,
+body.pwa-mobile .example,
+body.pwa-mobile .answer,
+body.pwa-mobile .qsolution {
+  overflow:visible !important;
+}
+body.pwa-mobile .qtext,
+body.pwa-mobile .material,
+body.pwa-mobile .raw,
+body.pwa-mobile .answer,
+body.pwa-mobile .qsolution {
+  display:block !important;
+  white-space:pre-wrap !important;
+  overflow-wrap:anywhere !important;
+  word-break:break-word !important;
+  -webkit-line-clamp:unset !important;
+  line-clamp:unset !important;
+  -webkit-box-orient:initial !important;
+}
+body.pwa-mobile img.qscan,
+body.pwa-mobile img.qmath {
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  height:auto !important;
+  max-height:none !important;
+  min-height:0 !important;
+  object-fit:contain !important;
+  object-position:top center !important;
+  overflow:visible !important;
+  cursor:zoom-in !important;
+}
+body.pwa-mobile .qscan,
+body.pwa-mobile .qmath {
+  max-height:none !important;
+  overflow:visible !important;
+}
+body.pwa-mobile .qbox svg {
+  max-height:none !important;
+  height:auto !important;
+  overflow:visible !important;
+}
+
+.pwa-image-zoom-overlay {
+  position:fixed !important;
+  inset:0 !important;
+  z-index:2147483000 !important;
+  background:rgba(6,12,14,.96) !important;
+  padding:max(14px,env(safe-area-inset-top)) 10px max(18px,env(safe-area-inset-bottom)) !important;
+  display:flex !important;
+  align-items:flex-start !important;
+  justify-content:center !important;
+  overflow:auto !important;
+  -webkit-overflow-scrolling:touch !important;
+}
+.pwa-image-zoom-overlay img {
+  display:block !important;
+  width:auto !important;
+  max-width:none !important;
+  height:auto !important;
+  max-height:none !important;
+  min-width:100% !important;
+  background:#fff !important;
+  filter:none !important;
+  opacity:1 !important;
+  margin:40px 0 20px !important;
+}
+.pwa-image-zoom-close {
+  position:fixed !important;
+  top:max(10px,env(safe-area-inset-top)) !important;
+  right:12px !important;
+  z-index:2147483001 !important;
+  min-width:44px !important;
+  min-height:44px !important;
+  border-radius:22px !important;
+  background:#223033 !important;
+  color:#fff !important;
+  -webkit-text-fill-color:#fff !important;
+  border:1px solid #526268 !important;
+  font-size:24px !important;
+  line-height:1 !important;
+}
+
 @media (prefers-color-scheme: dark) {
   body.pwa-mobile button:not(.active):not(.selected):not(.correct):not(.wrong):not(.right):not(.error):not(.success),
   body.pwa-mobile a[role="button"]:not(.active):not(.selected),
@@ -49,7 +151,6 @@ function installDarkModeContrastFix() {
     border-color:#9a5757 !important;
   }
 
-  /* 原 HTML 中若干内容块写死为浅色背景；深色模式统一提高对比度。 */
   body.pwa-mobile .material,
   body.pwa-mobile .qpreview,
   body.pwa-mobile .qbox,
@@ -101,7 +202,6 @@ function installDarkModeContrastFix() {
     border-color:#704638 !important;
   }
 
-  /* 真正的扫描题/公式图片保持原始浅色画布，禁止深色模式反色。 */
   body.pwa-mobile img.qscan,
   body.pwa-mobile img.qmath,
   body.pwa-mobile .qscan,
@@ -141,6 +241,30 @@ function installDarkModeContrastFix() {
 }
 `;
     doc.head.appendChild(style);
+
+    if (!doc.body.dataset.pwaImageZoomBound) {
+      doc.body.dataset.pwaImageZoomBound = '1';
+      doc.addEventListener('click', event => {
+        const img = event.target && event.target.closest && event.target.closest('img.qscan,img.qmath');
+        if (!img) return;
+        event.preventDefault();
+        const overlay = doc.createElement('div');
+        overlay.className = 'pwa-image-zoom-overlay';
+        const clone = img.cloneNode(true);
+        clone.removeAttribute('style');
+        const close = doc.createElement('button');
+        close.type = 'button';
+        close.className = 'pwa-image-zoom-close';
+        close.setAttribute('aria-label','关闭完整题图');
+        close.textContent = '×';
+        const dismiss = () => overlay.remove();
+        close.addEventListener('click', dismiss);
+        overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+        overlay.appendChild(close);
+        overlay.appendChild(clone);
+        doc.body.appendChild(overlay);
+      }, true);
+    }
   };
 
   frame.addEventListener('load', () => {
