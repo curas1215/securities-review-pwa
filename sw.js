@@ -1,7 +1,7 @@
-const CACHE_NAME = 'securities-review-pwa-v1.0.2';
+const CACHE_NAME = 'securities-review-pwa-v1.0.3';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './baseline-config.json',
-  './assets/app.css', './assets/app.js', './assets/app.part1.txt', './assets/app.part2.txt', './assets/app.part3.txt', './assets/app.part4.txt',
+  './assets/app.css', './assets/status-filter-fix.js', './assets/app.js', './assets/app.part1.txt', './assets/app.part2.txt', './assets/app.part3.txt', './assets/app.part4.txt',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png'
 ];
 self.addEventListener('install', event => {
